@@ -2,3 +2,4 @@
 /release-dist
 **/*/target/
 **/*.wasm
+.DS_Store
