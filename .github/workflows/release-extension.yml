@@ -1,13 +1,15 @@
+name: Release Zed Extension
 on: workflow_dispatch
 
 jobs:
   homebrew:
-    name: Release Zed Extension
+    name: Release
     runs-on: ubuntu-latest
     steps:
       - uses: huacnlee/zed-extension-action@v1
         with:
-          extension-name: autocorrect
+          extension-name: color-highlight
+          extension-path: extensions/color-highlight
           push-to: huacnlee/zed-extensions
         env:
           COMMITTER_TOKEN: ${{ secrets.COMMITTER_TOKEN }}
