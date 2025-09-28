@@ -7,52 +7,17 @@ on:
       - "v*"
 
 jobs:
-  # Build sources for every OS
+  # Build sources for Windows only
   github_build:
     name: Build release binaries
     strategy:
       fail-fast: false
       matrix:
         include:
-          - target: x86_64-unknown-linux-gnu
-            os: ubuntu-latest
-            name: color-lsp-linux-amd64.tar.gz
-            arch: x86_64
-
-          - target: aarch64-unknown-linux-gnu
-            os: ubuntu-latest
-            name: color-lsp-linux-arm64.tar.gz
-            arch: aarch64
-
-          - target: x86_64-apple-darwin
-            os: macOS-latest
-            name: color-lsp-darwin-amd64.tar.gz
-            arch: x86_64
-
-          - target: aarch64-apple-darwin
-            os: macOS-latest
-            name: color-lsp-darwin-arm64.tar.gz
-            arch: aarch64
-
           - target: x86_64-pc-windows-msvc
             os: windows-latest
             name: color-lsp-windows-amd64.zip
             arch: x86_64
-
-          - target: x86_64-unknown-linux-musl
-            os: ubuntu-latest
-            name: color-lsp-linux-musl-amd64.tar.gz
-            arch: x86_64
-
-          - target: aarch64-unknown-linux-musl
-            os: ubuntu-latest
-            name: color-lsp-linux-musl-arm64.tar.gz
-            arch: aarch64
-
-          # - target: aarch64-pc-windows-msvc
-          #   os: windows-latest
-          #   name: color-lsp-windows-arm64.zip
-          #   arch: aarch64
 
     runs-on: ${{ matrix.os }}
     steps:
@@ -75,11 +40,6 @@ jobs:
             ~/.cargo/git/db/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Install Musl Tool
-        if: matrix.target == 'x86_64-unknown-linux-musl' || matrix.target == 'aarch64-unknown-linux-musl'
-        run: |
-          sudo apt-get install musl-tools
-
       - name: Setup | Rust
         uses: actions-rs/toolchain@v1.0.7
         with:
@@ -93,34 +53,15 @@ jobs:
         with:
           command: build
           args: --manifest-path Cargo.toml --release --target ${{ matrix.target }} --config 'package.version="${{ steps.tagName.outputs.version }}"'
-          use-cross: ${{ matrix.os == 'ubuntu-latest' }}
 
       - name: Prepare artifacts [Windows]
-        if: matrix.os == 'windows-latest'
         run: |
           cd target/${{ matrix.target }}/release
           strip color-lsp.exe
           7z a ../../../${{ matrix.name }} color-lsp.exe
           cd -
 
-      - name: Prepare artifacts [Linux & macOS]
-        if: matrix.os != 'windows-latest'
-        run: |
-          cd target/${{ matrix.target }}/release
-          # TODO: investigate better cross platform stripping
-          strip color-lsp || true
-          tar czvf ../../../${{ matrix.name }} color-lsp
-          cd -
-
-      - name: Test Bin [Linux & macOS]
-        if: matrix.arch == 'x86_64' && matrix.os != 'windows-latest'
-        run: |
-          cd target/${{ matrix.target }}/release
-          ./color-lsp --version
-          cd -
-
       - name: Test Bin [Windows]
-        if: matrix.arch == 'x86_64' && matrix.os == 'windows-latest'
         run: |
           cd target/${{ matrix.target }}/release
           ./color-lsp.exe --version
