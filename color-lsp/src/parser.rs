@@ -125,16 +125,26 @@ pub(super) fn parse(text: &str) -> Vec<ColorNode> {
                     token.clear();
 
                     // Find the hex color code
-                    let hex = line_text[offset..]
-                        .chars()
-                        .take_while(is_hex_char)
-                        .take(9)
-                        .collect::<String>();
+                    // 使用 char_indices 遍历字符
+                    let mut chars = line_text[offset..].char_indices().peekable();
+                    let mut hex = String::new();
+                    while let Some((i, c)) = chars.peek() {
+                        if !is_hex_char(*c) || hex.chars().count() >= 9 {
+                            break;
+                        }
+                        hex.push(*c);
+                        chars.next();
+                    }
+                    
+                    // hex 的字节长度
+                    let hex_byte_len = hex.len();
+                    
                     if let Some(node) = match_color(&hex, ix, offset) {
                         nodes.push(node);
-                        offset += hex.len();
+                        offset += hex_byte_len; // 按字节偏移，这里 safe 因为 hex 是连续字符切出来的
                         continue;
                     }
+
                 }
                 'a'..='z' | 'A'..='Z' | '(' => {
                     // Avoid `Ok(hsla(`, to get `hsla(`
