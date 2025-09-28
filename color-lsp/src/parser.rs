@@ -136,7 +136,7 @@ pub(super) fn parse(text: &str) -> Vec<ColorNode> {
                         chars.next();
                     }
                     
-                    // hex 的字节长度
+                    // hex 的字节长度 
                     let hex_byte_len = hex.len();
                     
                     if let Some(node) = match_color(&hex, ix, offset) {
