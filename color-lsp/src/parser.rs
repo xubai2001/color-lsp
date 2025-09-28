@@ -136,19 +136,47 @@ pub(super) fn parse(text: &str) -> Vec<ColorNode> {
                         .take_while(|&c| is_hex_char(c))
                         .take(9)
                         .collect::<String>();
+        pub(super) fn parse(text: &str) -> Vec<ColorNode> {
+    let mut nodes = Vec::new();
+
+    for (ix, line_text) in text.lines().enumerate() {
+        let line_len = line_text.len();
+        let mut offset = 0;
+        let mut token = String::new();
+        
+        while offset < line_text.len() {
+            // 确保offset在字符边界上
+            let safe_offset = if line_text.is_char_boundary(offset) {
+                offset
+            } else {
+                // 找到下一个字符边界
+                (offset..=line_text.len())
+                    .find(|&i| line_text.is_char_boundary(i))
+                    .unwrap_or(line_text.len())
+            };
+            
+            if safe_offset >= line_text.len() {
+                break;
+            }
+            
+            let c = line_text[safe_offset..].chars().next().unwrap_or(' ');
+            
+            match c {
+                '#' => {
+                    token.clear();
+
+                    // Find the hex color code
+                    let hex = line_text[safe_offset..]
+                        .chars()
+                        .take_while(|c| is_hex_char(c))  // 修复：去掉 & 解构
+                        .take(9)
+                        .collect::<String>();
                     
-                    if let Some(node) = match_color(&hex, ix, offset) {
+                    if let Some(node) = match_color(&hex, ix, safe_offset) {
                         nodes.push(node);
-                        // 更新偏移量时也需要考虑字符边界
-                        offset = line_text.char_indices()
-                            .skip(char_offset + hex.chars().count())
-                            .next()
-                            .map(|(idx, _)| idx)
-                            .unwrap_or(line_text.len());
+                        offset = safe_offset + hex.len();
                         continue;
                     }
-
-
                 }
                 'a'..='z' | 'A'..='Z' | '(' => {
                     // Avoid `Ok(hsla(`, to get `hsla(`
@@ -162,20 +190,31 @@ pub(super) fn parse(text: &str) -> Vec<ColorNode> {
                         "hsl(" | "hsla(" | "rgb(" | "rgba(" | "hwb(" | "hwba(" | "oklab("
                         | "oklch(" | "lab(" | "lch(" | "hsv(" => {
                             // Find until the closing parenthesis
-                            let end = line_text[offset..]
+                            let remaining = &line_text[safe_offset..];
+                            let end = remaining
                                 .chars()
                                 .position(|c| c == ')')
                                 .unwrap_or(0);
-                            let token_offset = offset.saturating_sub(token.len()) + 1;
-                            token.push_str(
-                                &line_text
-                                    [(offset + 1).min(line_len)..(offset + end + 1).min(line_len)],
-                            );
+                            
+                            let token_start = safe_offset.saturating_sub(token.len()) + 1;
+                            
+                            // 安全地构建完整的token
+                            let mut full_token = token.clone();
+                            if end > 0 {
+                                let end_chars: String = remaining.chars().skip(1).take(end).collect();
+                                full_token.push_str(&end_chars);
+                            }
 
-                            if let Some(node) = match_color(&token, ix, token_offset) {
+                            if let Some(node) = match_color(&full_token, ix, token_start) {
                                 token.clear();
                                 nodes.push(node);
-                                offset += end + 1;
+                                // 计算下一个位置的字节偏移
+                                let chars_to_skip = end + 1;
+                                let mut char_indices = line_text[safe_offset..].char_indices();
+                                for _ in 0..chars_to_skip {
+                                    char_indices.next();
+                                }
+                                offset = safe_offset + char_indices.next().map(|(i, _)| i).unwrap_or(line_text.len() - safe_offset);
                                 continue;
                             }
                         }
@@ -187,12 +226,13 @@ pub(super) fn parse(text: &str) -> Vec<ColorNode> {
                 }
             }
 
-            offset += 1;
+            offset = safe_offset + c.len_utf8();
         }
     }
 
     nodes
 }
+
 
 fn match_color(part: &str, line_ix: usize, offset: usize) -> Option<ColorNode> {
     if let Ok(color) = try_parse_color(part) {
