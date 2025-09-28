@@ -125,25 +125,29 @@ pub(super) fn parse(text: &str) -> Vec<ColorNode> {
                     token.clear();
 
                     // Find the hex color code
-                    // 使用 char_indices 遍历字符
-                    let mut chars = line_text[offset..].char_indices().peekable();
-                    let mut hex = String::new();
-                    while let Some((i, c)) = chars.peek() {
-                        if !is_hex_char(*c) || hex.chars().count() >= 9 {
-                            break;
-                        }
-                        hex.push(*c);
-                        chars.next();
-                    }
+                    // 将字节索引转换为字符索引
+                    let char_offset = line_text.char_indices()
+                        .position(|(byte_idx, _)| byte_idx >= offset)
+                        .unwrap_or(line_text.chars().count());
                     
-                    // hex 的字节长度
-                    let hex_byte_len = hex.len();
+                    // 从字符索引开始处理
+                    let hex = line_text.chars()
+                        .skip(char_offset)
+                        .take_while(|&c| is_hex_char(c))
+                        .take(9)
+                        .collect::<String>();
                     
                     if let Some(node) = match_color(&hex, ix, offset) {
                         nodes.push(node);
-                        offset += hex_byte_len; // 按字节偏移，这里 safe 因为 hex 是连续字符切出来的
+                        // 更新偏移量时也需要考虑字符边界
+                        offset = line_text.char_indices()
+                            .skip(char_offset + hex.chars().count())
+                            .next()
+                            .map(|(idx, _)| idx)
+                            .unwrap_or(line_text.len());
                         continue;
                     }
+
 
                 }
                 'a'..='z' | 'A'..='Z' | '(' => {
