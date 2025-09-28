@@ -114,34 +114,35 @@ fn is_hex_char(c: &char) -> bool {
 pub(super) fn parse(text: &str) -> Vec<ColorNode> {
     let mut nodes = Vec::new();
 
-    for (ix, line_text) in text.lines().enumerate() {
-        let mut offset = 0;
+    for (line_ix, line_text) in text.lines().enumerate() {
+        // 为了正确处理位置，我们需要同时跟踪字符位置和UTF-16位置
+        let mut char_pos = 0;
         let mut token = String::new();
+        let chars: Vec<char> = line_text.chars().collect();
         
-        while offset < line_text.len() {
-            // 确保offset在字符边界上
-            if !line_text.is_char_boundary(offset) {
-                offset += 1;
-                continue;
-            }
-            
-            let c = line_text[offset..].chars().next().unwrap_or(' ');
+        while char_pos < chars.len() {
+            let c = chars[char_pos];
             
             match c {
                 '#' => {
                     token.clear();
 
                     // Find the hex color code
-                    let hex = line_text[offset..]
-                        .chars()
-                        .take_while(|c| is_hex_char(c))
+                    let hex_chars: Vec<char> = chars[char_pos..]
+                        .iter()
+                        .take_while(|&&c| is_hex_char(&c))
                         .take(9)
-                        .collect::<String>();
+                        .copied()
+                        .collect();
                     
-                    if let Some(node) = match_color(&hex, ix, offset) {
-                        nodes.push(node);
-                        offset += hex.len();
-                        continue;
+                    let hex: String = hex_chars.iter().collect();
+                    
+                    if !hex.is_empty() && hex.len() > 1 { // 至少需要 # 和一个字符
+                        if let Some(node) = match_color(&hex, line_ix, char_pos) {
+                            nodes.push(node);
+                            char_pos += hex_chars.len();
+                            continue;
+                        }
                     }
                 }
                 'a'..='z' | 'A'..='Z' | '(' => {
@@ -156,26 +157,22 @@ pub(super) fn parse(text: &str) -> Vec<ColorNode> {
                         "hsl(" | "hsla(" | "rgb(" | "rgba(" | "hwb(" | "hwba(" | "oklab("
                         | "oklch(" | "lab(" | "lch(" | "hsv(" => {
                             // Find until the closing parenthesis
-                            let remaining = &line_text[offset..];
-                            let end = remaining
-                                .chars()
-                                .position(|c| c == ')')
-                                .unwrap_or(0);
-                            
-                            let token_offset = offset.saturating_sub(token.len() - 1);
-                            
-                            if end > 0 {
-                                let end_chars: String = remaining
-                                    .chars()
-                                    .skip(1)
-                                    .take(end)
-                                    .collect();
-                                token.push_str(&end_chars);
+                            if let Some(end_pos) = chars[char_pos..]
+                                .iter()
+                                .position(|&c| c == ')') {
                                 
-                                if let Some(node) = match_color(&token, ix, token_offset) {
+                                let token_start = char_pos.saturating_sub(token.chars().count() - 1);
+                                
+                                // 构建完整的函数调用
+                                let remaining_chars: String = chars[char_pos + 1..char_pos + 1 + end_pos]
+                                    .iter()
+                                    .collect();
+                                token.push_str(&remaining_chars);
+                                
+                                if let Some(node) = match_color(&token, line_ix, token_start) {
                                     nodes.push(node);
                                     token.clear();
-                                    offset += 1 + end_chars.len();
+                                    char_pos += 1 + end_pos;
                                     continue;
                                 }
                             }
@@ -188,12 +185,13 @@ pub(super) fn parse(text: &str) -> Vec<ColorNode> {
                 }
             }
 
-            offset += c.len_utf8();
+            char_pos += 1;
         }
     }
 
     nodes
 }
+
 
 
 
